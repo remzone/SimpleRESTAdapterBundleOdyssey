@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- *  Copyright 2021 CI Hub GmbH. All rights reserved.
+ * ...header...
  */
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Controller;
