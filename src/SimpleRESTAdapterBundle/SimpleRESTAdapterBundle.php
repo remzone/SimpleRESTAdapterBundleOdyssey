@@ -31,6 +31,18 @@ class SimpleRESTAdapterBundle extends AbstractPimcoreBundle implements PimcoreBu
         ];
     }
 
+    // ✅ required by PimcoreBundleAdminClassicInterface in your Pimcore version
+    public function getEditmodeJsPaths(): array
+    {
+        return [];
+    }
+
+    // ✅ required by PimcoreBundleAdminClassicInterface in your Pimcore version
+    public function getEditmodeCssPaths(): array
+    {
+        return [];
+    }
+
     protected function getComposerPackageName(): string
     {
         return self::PACKAGE_NAME;
