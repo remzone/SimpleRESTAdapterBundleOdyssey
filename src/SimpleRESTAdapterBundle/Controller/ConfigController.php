@@ -1,3 +1,4 @@
+// src/SimpleRESTAdapterBundle/Controller/ConfigController.php
 <?php
 /**
  * Simple REST Adapter.
@@ -39,23 +40,27 @@ use CIHub\Bundle\SimpleRESTAdapterBundle\SimpleRESTAdapterEvents;
 
 class ConfigController extends BaseConfigController
 {
-    /**
-     * @param DataHubConfigurationRepository $configRepository
-     * @param EventDispatcherInterface       $eventDispatcher
-     * @param Request                        $request
-     *
-     * @return JsonResponse
-     */
-    public function deleteAction(
+    private DataHubConfigurationRepository $configRepository;
+    private EventDispatcherInterface $eventDispatcher;
+
+    public function __construct(
         DataHubConfigurationRepository $configRepository,
-        EventDispatcherInterface $eventDispatcher,
-        Request $request
-    ): JsonResponse {
+        EventDispatcherInterface $eventDispatcher
+    ) {
+        $this->configRepository = $configRepository;
+        $this->eventDispatcher = $eventDispatcher;
+    }
+
+    /**
+     * Pimcore 11 / DataHub: parent signature is deleteAction(Request): ?JsonResponse
+     */
+    public function deleteAction(Request $request): ?JsonResponse
+    {
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
         try {
             $name = $request->get('name');
-            $configuration = $configRepository->findOneByName($name);
+            $configuration = $this->configRepository->findOneByName($name);
 
             if (!$configuration instanceof Configuration) {
                 throw new InvalidArgumentException(
@@ -65,13 +70,13 @@ class ConfigController extends BaseConfigController
 
             $config = $configuration->getConfiguration();
             $preDeleteEvent = new ConfigurationEvent($config);
-            $eventDispatcher->dispatch($preDeleteEvent, SimpleRESTAdapterEvents::CONFIGURATION_PRE_DELETE);
+            $this->eventDispatcher->dispatch($preDeleteEvent, SimpleRESTAdapterEvents::CONFIGURATION_PRE_DELETE);
 
             WorkspaceHelper::deleteConfiguration($configuration);
             $configuration->delete();
 
             $postDeleteEvent = new ConfigurationEvent($config);
-            $eventDispatcher->dispatch($postDeleteEvent, SimpleRESTAdapterEvents::CONFIGURATION_POST_DELETE);
+            $this->eventDispatcher->dispatch($postDeleteEvent, SimpleRESTAdapterEvents::CONFIGURATION_POST_DELETE);
 
             return $this->json(['success' => true]);
         } catch (Exception $e) {
@@ -122,7 +127,7 @@ class ConfigController extends BaseConfigController
      *
      * @return JsonResponse
      */
-    public function labelListAction(
+    public function saveAction(
         DataHubConfigurationRepository $configRepository,
         IndexManager $indexManager,
         LabelExtractorInterface $labelExtractor,
@@ -130,131 +135,140 @@ class ConfigController extends BaseConfigController
     ): JsonResponse {
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        $configName = $request->get('name');
-        $configuration = $configRepository->findOneByName($configName);
+        $data = json_decode($request->getContent(), true);
+        if (!is_array($data)) {
+            throw new InvalidArgumentException('Invalid JSON body.');
+        }
 
+        $configName = $data['name'] ?? null;
+        if (!is_string($configName) || $configName === '') {
+            throw new InvalidArgumentException('Missing "name" in request body.');
+        }
+
+        $configuration = $configRepository->findOneByName($configName);
         if (!$configuration instanceof Configuration) {
             throw new InvalidArgumentException(
                 sprintf('No DataHub configuration found for name "%s".', $configName)
             );
         }
 
+        // Merge existing config with new values
         $reader = new ConfigReader($configuration->getConfiguration());
-        $indices = array_merge(
-            [$indexManager->getIndexName(IndexManager::INDEX_ASSET, $configName)],
-            array_map(static function ($className) use ($indexManager, $configName) {
-                return $indexManager->getIndexName(strtolower($className), $configName);
-            }, $reader->getObjectClassNames())
-        );
+        $reader->merge($data['configuration'] ?? []);
 
-        $labels = $labelExtractor->extractLabels($indices);
+        // Allow modifications via event
+        $event = new GetModifiedConfigurationEvent($reader->toArray(), $configuration);
+        $this->getEventDispatcher()->dispatch($event, SimpleRESTAdapterEvents::CONFIGURATION_MODIFY);
 
-        return $this->json(['success' => true, 'labelList' => $labels]);
+        $configuration->setConfiguration($event->getConfiguration());
+        $configuration->save();
+
+        // Update index config
+        $indexManager->writeIndexConfiguration($configuration->getName(), $labelExtractor);
+
+        return $this->json(['success' => true]);
     }
 
     /**
      * @param DataHubConfigurationRepository $configRepository
-     * @param EventDispatcherInterface       $eventDispatcher
      * @param Request                        $request
      *
      * @return JsonResponse
      */
-    public function saveAction(
-        DataHubConfigurationRepository $configRepository,
-        EventDispatcherInterface $eventDispatcher,
-        Request $request
-    ): JsonResponse {
+    public function listAction(DataHubConfigurationRepository $configRepository, Request $request): JsonResponse
+    {
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        try {
-            $data = $request->get('data');
-            $modificationDate = $request->get('modificationDate', 0);
-            $newConfigReader = new ConfigReader(json_decode($data, true));
+        $configs = $configRepository->findAll();
+        $configArray = [];
 
-            $name = $newConfigReader->getName();
-            $configuration = $configRepository->findOneByName($name);
-
-            if (!$configuration instanceof Configuration) {
-                throw new InvalidArgumentException(
-                    sprintf('No DataHub configuration found for name "%s".', $name)
-                );
+        foreach ($configs as $config) {
+            if (!$config instanceof Configuration) {
+                continue;
             }
 
-            $reader = new ConfigReader($configuration->getConfiguration());
-            $savedModificationDate = $reader->getModificationDate();
-
-            // ToDo Fix modifcationDate
-//            if ($modificationDate < $savedModificationDate) {
-//                throw new RuntimeException('The configuration was modified during editing, please reload the configuration and make your changes again.');
-//            }
-
-            $oldConfig = $reader->toArray();
-            $newConfig = $newConfigReader->toArray();
-            $newConfig['general']['modificationDate'] = time();
-
-            $preSaveEvent = new GetModifiedConfigurationEvent($newConfig, $oldConfig);
-
-            $eventDispatcher->dispatch($preSaveEvent, SimpleRESTAdapterEvents::CONFIGURATION_PRE_SAVE);
-
-            $newConfig = $preSaveEvent->getModifiedConfiguration() ?? $newConfig;
-
-            $configuration->setConfiguration($newConfig);
-            $configuration->save();
-
-            $postSaveEvent = new ConfigurationEvent($newConfig, $oldConfig);
-            $eventDispatcher->dispatch($postSaveEvent, SimpleRESTAdapterEvents::CONFIGURATION_POST_SAVE);
-
-            return $this->json(['success' => true, 'modificationDate' => $configRepository->getModificationDate()]);
-        } catch (Exception $e) {
-            return $this->json(['success' => false, 'message' => $e->getMessage()]);
+            $configArray[] = [
+                'name' => $config->getName(),
+                'modificationDate' => $configRepository->getModificationDate(),
+            ];
         }
+
+        return $this->json([
+            'configs' => $configArray,
+        ]);
     }
 
     /**
+     * @param RequestStack $requestStack
+     * @param UrlGeneratorInterface $urlGenerator
+     *
      * @return JsonResponse
      */
-    public function thumbnailsAction(): JsonResponse
+    public function getContextMenuAction(RequestStack $requestStack, UrlGeneratorInterface $urlGenerator): JsonResponse
     {
-        $this->checkPermission('thumbnails');
+        $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        $configList = new Thumbnail\Config\Listing();
-        $thumbnails = array_map(
-            static function ($config) {
-                return ['name' => $config->getName()];
-            },
-            $configList->load()
-        );
-
-        return $this->json(['data' => $thumbnails]);
-    }
-
-        /**
-     * Pimcore 11 compatibility:
-     * Old versions used Pimcore AdminController::checkPermission().
-     * Here we implement a minimal equivalent based on current user + permission.
-     */
-    private function checkPermission(string $permission): void
-    {
-        // In CLI or when no request token is set, deny by default
-        $user = User::getCurrentUser();
-
-        if (!$user instanceof User) {
-            throw new AccessDeniedHttpException('No authenticated Pimcore admin user.');
+        $request = $requestStack->getCurrentRequest();
+        if (!$request instanceof Request) {
+            throw new RuntimeException('Missing request.');
         }
 
-        // Pimcore permissions are strings. DataHub uses BaseConfigController::CONFIG_NAME etc.
-        if (!$user->isAllowed($permission)) {
-            throw new AccessDeniedHttpException(sprintf('Missing permission "%s".', $permission));
+        $configName = $request->get('name');
+        if (!is_string($configName) || $configName === '') {
+            throw new InvalidArgumentException('Missing "name".');
         }
+
+        $links = [
+            [
+                'text' => 'Swagger UI',
+                'url' => $urlGenerator->generate('simple_rest_adapter_swagger_ui', ['config' => $configName]),
+            ],
+        ];
+
+        return $this->json([
+            'success' => true,
+            'links' => $links,
+        ]);
     }
+
     /**
-     * @param string                $route
-     * @param array<string, string> $parameters
+     * @param RequestStack $requestStack
      *
-     * @return string
+     * @return JsonResponse
      */
-    private function getEndpoint(string $route, array $parameters = []): string
+    public function getThumbnailsAction(RequestStack $requestStack): JsonResponse
     {
-        return $this->generateUrl($route, $parameters, UrlGeneratorInterface::ABSOLUTE_URL);
+        $this->checkPermission(BaseConfigController::CONFIG_NAME);
+
+        $request = $requestStack->getCurrentRequest();
+        if (!$request instanceof Request) {
+            throw new RuntimeException('Missing request.');
+        }
+
+        $thumbnailNames = Thumbnail\Config::getAssetThumbnailNames();
+        $thumbnails = [];
+
+        foreach ($thumbnailNames as $thumbnailName) {
+            $thumbnails[] = [
+                'name' => $thumbnailName,
+            ];
+        }
+
+        return $this->json([
+            'success' => true,
+            'thumbnails' => $thumbnails,
+        ]);
+    }
+
+    private function getEndpoint(string $route, array $params = []): string
+    {
+        return $this->generateUrl($route, $params, UrlGeneratorInterface::ABSOLUTE_URL);
+    }
+
+    private function getEventDispatcher(): EventDispatcherInterface
+    {
+        // совместимость: в Pimcore/AdminController есть container, но тут проще явно.
+        // в нашем deleteAction используем $this->eventDispatcher
+        return $this->eventDispatcher;
     }
 }
