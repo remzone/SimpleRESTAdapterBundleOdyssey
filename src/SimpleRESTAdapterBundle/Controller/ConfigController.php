@@ -37,7 +37,7 @@ use CIHub\Bundle\SimpleRESTAdapterBundle\Reader\ConfigReader;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Repository\DataHubConfigurationRepository;
 use CIHub\Bundle\SimpleRESTAdapterBundle\SimpleRESTAdapterEvents;
 
-class ConfigController extends \Symfony\Bundle\FrameworkBundle\Controller\AbstractController
+class ConfigController extends BaseConfigController
 {
     /**
      * @param DataHubConfigurationRepository $configRepository
