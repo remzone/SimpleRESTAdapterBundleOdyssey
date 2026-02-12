@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-namespace SimpleRESTAdapterBundle\Controller;
+namespace CIHub\Bundle\SimpleRESTAdapterBundle\Controller;
 
+use CIHub\Bundle\SimpleRESTAdapterBundle\Config\Config;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Event\DataHubConfigEvent;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Event\DataHubEvents;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Repository\ConfigRepository;
 use Pimcore\Bundle\DataHubBundle\Controller\ConfigController as BaseConfigController;
 use Pimcore\Bundle\DataHubBundle\Configuration;
-use Pimcore\Bundle\DataHubBundle\GraphQL\Service;
+use Pimcore\Bundle\DataHubBundle\GraphQL\Service as GraphQlService;
 use Pimcore\Controller\Traits\JsonHelperTrait;
-use SimpleRESTAdapterBundle\Config\Config;
-use SimpleRESTAdapterBundle\Event\DataHubConfigEvent;
-use SimpleRESTAdapterBundle\Event\DataHubEvents;
-use SimpleRESTAdapterBundle\Repository\ConfigRepository;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -19,29 +19,25 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
 
-/**
- * ВАЖНО:
- * - НЕ переопределяем checkPermission(): он уже есть в Pimcore\Controller\UserAwareController (protected)
- * - Сигнатура getAction должна совпадать с DataHub ConfigController (Pimcore 11)
- */
 class ConfigController extends BaseConfigController
 {
     use JsonHelperTrait;
 
     public function __construct(
         private readonly ConfigRepository $configRepository,
-        private readonly EventDispatcherInterface $eventDispatcher
+        private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly RouterInterface $router,
+        private readonly UrlGeneratorInterface $urlGenerator,
+        private readonly RequestStack $requestStack
     ) {
     }
 
     public function listAction(Request $request): JsonResponse
     {
-        // Pimcore permission guard (родительский, совместимый)
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
         $list = $this->configRepository->getList();
 
-        // Поддержка modificationDate (как у тебя было)
         foreach ($list as $key => $item) {
             if (!isset($item['name'])) {
                 continue;
@@ -57,18 +53,14 @@ class ConfigController extends BaseConfigController
         return new JsonResponse(['success' => true, 'data' => $list]);
     }
 
-    /**
-     * Pimcore DataHub signature:
-     * public function getAction(Request $request, Service $graphQlService, EventDispatcherInterface $eventDispatcher): JsonResponse
-     */
     public function getAction(
         Request $request,
-        Service $graphQlService,
+        GraphQlService $graphQlService,
         EventDispatcherInterface $eventDispatcher
     ): JsonResponse {
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        // как в DataHub
+        // В Pimcore DataHub это query string, так же используем здесь
         $name = $request->query->getString('name');
 
         $configuration = $this->configRepository->findOneByName($name);
@@ -83,7 +75,7 @@ class ConfigController extends BaseConfigController
 
         $config = $configuration->getConfiguration();
 
-        // Добавляем ссылки на твои endpoint'ы (не ломая DataHub структуру)
+        // Добавляем ссылки на endpoints Simple REST Adapter, не ломая структуру DataHub
         $config['simpleRestAdapter'] = array_merge($config['simpleRestAdapter'] ?? [], [
             'swaggerUrl' => $this->absoluteRoute('simple_rest_adapter_swagger_ui'),
             'treeItemsUrl' => $this->absoluteRoute('simple_rest_adapter_endpoints_tree_items', ['config' => $name]),
@@ -97,15 +89,12 @@ class ConfigController extends BaseConfigController
         return new JsonResponse([
             'name' => $configuration->getName(),
             'configuration' => $config,
-
             'userPermissions' => [
                 'update' => method_exists($configuration, 'isAllowed') ? $configuration->isAllowed('update') : true,
                 'delete' => method_exists($configuration, 'isAllowed') ? $configuration->isAllowed('delete') : true,
             ],
-
             'supportedGraphQLQueryDataTypes' => $supportedQueryDataTypes,
             'supportedGraphQLMutationDataTypes' => $supportedMutationDataTypes,
-
             'modificationDate' => $config['general']['modificationDate'] ?? $this->configRepository->getModificationDate(),
         ]);
     }
@@ -129,55 +118,29 @@ class ConfigController extends BaseConfigController
     {
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
+        $name = (string) $request->get('name');
+        $endpoint = (string) $request->get('endpoint');
+
+        $url = $this->router->getContext()->getScheme()
+            . '://'
+            . $this->router->getContext()->getHost()
+            . $this->urlGenerator->generate('pimcore_datahub_webservice', [
+                'name' => $name,
+                'endpoint' => $endpoint,
+            ]);
+
         return new JsonResponse([
             'success' => true,
-            'url' => $this->getEndpoint(
-                (string) $request->get('name'),
-                (string) $request->get('endpoint'),
-                (string) $request->get('type'),
-                $this->container->get(RequestStack::class),
-                $this->container->get(RouterInterface::class)->getContext()->getScheme()
-                    . '://'
-                    . $this->container->get(RouterInterface::class)->getContext()->getHost(),
-                $this->container->get(UrlGeneratorInterface::class),
-            ),
+            'url' => $url,
         ]);
     }
 
-    /**
-     * Оставляю твою реализацию (для pimcore_datahub_webservice).
-     */
-    private function getEndpoint(
-        string $name,
-        string $endpoint,
-        string $type,
-        RequestStack $requestStack,
-        string $url,
-        UrlGeneratorInterface $urlGenerator
-    ): string {
-        $path = $urlGenerator->generate('pimcore_datahub_webservice', [
-            'name' => $name,
-            'endpoint' => $endpoint,
-        ]);
-
-        return $url . $path;
-    }
-
-    /**
-     * Абсолютная ссылка на роут (нужно для UI/внешних вызовов).
-     */
     private function absoluteRoute(string $routeName, array $params = []): string
     {
-        /** @var RouterInterface $router */
-        $router = $this->container->get(RouterInterface::class);
+        $scheme = $this->router->getContext()->getScheme();
+        $host = $this->router->getContext()->getHost();
 
-        $scheme = $router->getContext()->getScheme();
-        $host = $router->getContext()->getHost();
-
-        /** @var UrlGeneratorInterface $urlGenerator */
-        $urlGenerator = $this->container->get(UrlGeneratorInterface::class);
-
-        $path = $urlGenerator->generate($routeName, $params);
+        $path = $this->urlGenerator->generate($routeName, $params);
 
         return $scheme . '://' . $host . $path;
     }
