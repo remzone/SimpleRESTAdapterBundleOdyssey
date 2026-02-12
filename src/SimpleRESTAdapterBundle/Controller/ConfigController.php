@@ -21,8 +21,10 @@ use Pimcore\Bundle\DataHubBundle\Configuration;
 use Pimcore\Bundle\DataHubBundle\Controller\ConfigController as BaseConfigController;
 use Pimcore\Bundle\DataHubBundle\WorkspaceHelper;
 use Pimcore\Model\Asset\Image\Thumbnail;
+use Pimcore\Model\User;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -226,6 +228,25 @@ class ConfigController extends \Symfony\Bundle\FrameworkBundle\Controller\Abstra
         return $this->json(['data' => $thumbnails]);
     }
 
+        /**
+     * Pimcore 11 compatibility:
+     * Old versions used Pimcore AdminController::checkPermission().
+     * Here we implement a minimal equivalent based on current user + permission.
+     */
+    private function checkPermission(string $permission): void
+    {
+        // In CLI or when no request token is set, deny by default
+        $user = User::getCurrentUser();
+
+        if (!$user instanceof User) {
+            throw new AccessDeniedHttpException('No authenticated Pimcore admin user.');
+        }
+
+        // Pimcore permissions are strings. DataHub uses BaseConfigController::CONFIG_NAME etc.
+        if (!$user->isAllowed($permission)) {
+            throw new AccessDeniedHttpException(sprintf('Missing permission "%s".', $permission));
+        }
+    }
     /**
      * @param string                $route
      * @param array<string, string> $parameters
