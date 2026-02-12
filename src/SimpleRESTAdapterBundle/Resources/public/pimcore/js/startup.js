@@ -61,3 +61,44 @@ pimcore.plugin.simpleRestAdapterBundle = Class.create(pimcore.plugin.admin, {
 
 new pimcore.plugin.simpleRestAdapterBundle();
 const simpleRestAdapterBundle = new pimcore.plugin.simpleRestAdapterBundle();
+
+(function registerSimpleRestAdapterWhenDataHubReady() {
+  const tryRegister = () => {
+    // Adapter class must exist
+    const Adapter = pimcore?.plugin?.datahub?.adapter?.simpleRest;
+    if (!Adapter) return false;
+
+    // Variant A: registry object exists
+    if (pimcore?.plugin?.datahub?.adapterRegistry?.register) {
+      pimcore.plugin.datahub.adapterRegistry.register("simpleRest", Adapter);
+      return true;
+    }
+
+    // Variant B: adapters map exists
+    if (pimcore?.plugin?.datahub?.adapters && typeof pimcore.plugin.datahub.adapters === "object") {
+      pimcore.plugin.datahub.adapters.simpleRest = Adapter;
+      return true;
+    }
+
+    // Variant C: factory exists
+    if (pimcore?.plugin?.datahub?.getAdapter && typeof pimcore.plugin.datahub.getAdapter === "function") {
+      // nothing to do here, but indicates DataHub is loaded
+      return false;
+    }
+
+    return false;
+  };
+
+  // Try immediately + retry a few times (DataHub scripts might load later)
+  let tries = 0;
+  const timer = setInterval(() => {
+    tries += 1;
+    if (tryRegister() || tries > 40) {
+      clearInterval(timer);
+      if (tries > 40) {
+        // eslint-disable-next-line no-console
+        console.warn("[SimpleRESTAdapterBundle] DataHub registry not found; adapter may not appear in UI.");
+      }
+    }
+  }, 250);
+})();
