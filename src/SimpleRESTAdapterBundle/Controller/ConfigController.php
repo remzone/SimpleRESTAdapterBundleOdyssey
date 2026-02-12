@@ -18,10 +18,12 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Security\Core\Exception\AccessDeniedException;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
-use Pimcore\Model\User;
 
+/**
+ * ВАЖНО:
+ * - НЕ переопределяем checkPermission(): он уже есть в Pimcore\Controller\UserAwareController (protected)
+ * - Сигнатура getAction должна совпадать с DataHub ConfigController (Pimcore 11)
+ */
 class ConfigController extends BaseConfigController
 {
     use JsonHelperTrait;
@@ -30,20 +32,25 @@ class ConfigController extends BaseConfigController
         private readonly ConfigRepository $configRepository,
         private readonly EventDispatcherInterface $eventDispatcher
     ) {
-        // parent::__construct() обычно не нужен
     }
 
     public function listAction(Request $request): JsonResponse
     {
+        // Pimcore permission guard (родительский, совместимый)
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
         $list = $this->configRepository->getList();
 
-        // Поддержка modificationDate как у тебя в старой логике
-        foreach ($list as $key => $configuration) {
-            $config = $this->configRepository->findOneByName($configuration['name']);
-            if ($config) {
-                $list[$key]['modificationDate'] = $config->getModificationDate();
+        // Поддержка modificationDate (как у тебя было)
+        foreach ($list as $key => $item) {
+            if (!isset($item['name'])) {
+                continue;
+            }
+
+            $cfg = $this->configRepository->findOneByName((string) $item['name']);
+            if ($cfg instanceof Configuration) {
+                $list[$key]['modificationDate'] = $cfg->getConfiguration()['general']['modificationDate']
+                    ?? $this->configRepository->getModificationDate();
             }
         }
 
@@ -64,38 +71,31 @@ class ConfigController extends BaseConfigController
         // как в DataHub
         $name = $request->query->getString('name');
 
-        // твоя репозитория вместо Configuration::getByName()
         $configuration = $this->configRepository->findOneByName($name);
 
         if (!$configuration instanceof Configuration) {
             throw new \InvalidArgumentException(sprintf('No DataHub configuration found for name "%s".', $name));
         }
 
-        // permissions как у DataHub
         if (method_exists($configuration, 'isAllowed') && !$configuration->isAllowed('read')) {
             throw $this->createAccessDeniedHttpException();
         }
 
-        // базовый конфиг
         $config = $configuration->getConfiguration();
 
-        // ---- твоя часть: добавляем ссылки на endpoints в конфиг ----
-        // делаем абсолютные URL, как DataHub генерит webservice url
+        // Добавляем ссылки на твои endpoint'ы (не ломая DataHub структуру)
         $config['simpleRestAdapter'] = array_merge($config['simpleRestAdapter'] ?? [], [
             'swaggerUrl' => $this->absoluteRoute('simple_rest_adapter_swagger_ui'),
             'treeItemsUrl' => $this->absoluteRoute('simple_rest_adapter_endpoints_tree_items', ['config' => $name]),
             'searchUrl' => $this->absoluteRoute('simple_rest_adapter_endpoints_get_element', ['config' => $name]),
             'getElementByIdUrl' => $this->absoluteRoute('simple_rest_adapter_endpoints_get_element', ['config' => $name]),
         ]);
-        // -----------------------------------------------------------
 
-        // Чтобы UI DataHub не ломался, можно оставить совместимую структуру ответа:
-        // (даже если ты это не используешь сейчас — это безопаснее)
         $supportedQueryDataTypes = $graphQlService->getSupportedDataObjectQueryDataTypes();
         $supportedMutationDataTypes = $graphQlService->getSupportedDataObjectMutationDataTypes();
 
         return new JsonResponse([
-            'name' => method_exists($configuration, 'getName') ? $configuration->getName() : $name,
+            'name' => $configuration->getName(),
             'configuration' => $config,
 
             'userPermissions' => [
@@ -106,7 +106,6 @@ class ConfigController extends BaseConfigController
             'supportedGraphQLQueryDataTypes' => $supportedQueryDataTypes,
             'supportedGraphQLMutationDataTypes' => $supportedMutationDataTypes,
 
-            // у тебя modificationDate лежит в репозитории/конфиге — оставляем оба варианта
             'modificationDate' => $config['general']['modificationDate'] ?? $this->configRepository->getModificationDate(),
         ]);
     }
@@ -165,7 +164,7 @@ class ConfigController extends BaseConfigController
     }
 
     /**
-     * Абсолютная ссылка на роут (нужно для UI).
+     * Абсолютная ссылка на роут (нужно для UI/внешних вызовов).
      */
     private function absoluteRoute(string $routeName, array $params = []): string
     {
@@ -181,26 +180,5 @@ class ConfigController extends BaseConfigController
         $path = $urlGenerator->generate($routeName, $params);
 
         return $scheme . '://' . $host . $path;
-    }
-
-    /**
-     * Pimcore permission guard (твоя логика).
-     */
-    private function checkPermission(string $permission): void
-    {
-        /** @var User|null $user */
-        $user = $this->getUser();
-
-        if (!$user instanceof User) {
-            throw new AccessDeniedHttpException();
-        }
-
-        if (method_exists($user, 'isAdmin') && $user->isAdmin()) {
-            return;
-        }
-
-        if (!$user->isAllowed($permission)) {
-            throw new AccessDeniedException();
-        }
     }
 }
