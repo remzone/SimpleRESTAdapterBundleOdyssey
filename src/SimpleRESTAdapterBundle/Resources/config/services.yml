@@ -11,6 +11,8 @@ services:
     # Controllers
     CIHub\Bundle\SimpleRESTAdapterBundle\Controller\:
         resource: '../../Controller'
+        exclude:
+            - '../../Controller/ConfigController.php'
         public: true
         tags: ['controller.service_arguments']
         bind:
