@@ -6,13 +6,11 @@ namespace CIHub\Bundle\SimpleRESTAdapterBundle;
 
 use Pimcore\Extension\Bundle\AbstractPimcoreBundle;
 use Pimcore\Extension\Bundle\PimcoreBundleAdminClassicInterface;
-use Pimcore\Extension\Bundle\Traits\BundleAdminClassicSupportTrait;
 use Pimcore\Extension\Bundle\Traits\PackageVersionTrait;
 
 class SimpleRESTAdapterBundle extends AbstractPimcoreBundle implements PimcoreBundleAdminClassicInterface
 {
     use PackageVersionTrait;
-    use BundleAdminClassicSupportTrait;
 
     public const PACKAGE_NAME = 'odyssey/simple-rest-adapter-bundle';
 
