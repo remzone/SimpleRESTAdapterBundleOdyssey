@@ -1,26 +1,32 @@
 {
-  "name": "ci-hub/simple-rest-adapter-bundle",
+  "name": "odyssey/simple-rest-adapter-bundle",
   "type": "pimcore-bundle",
   "license": "GPL-3.0-or-later",
-  "description": "Simple REST Adapter for Pimcore DataHub",
+  "description": "Simple REST Adapter for Pimcore DataHub (fork compatible with Pimcore 11)",
   "keywords": [
     "pimcore",
-    "pimcore-bundle"
+    "pimcore-bundle",
+    "datahub",
+    "rest"
   ],
-  "homepage": "https://github.com/ci-hub-gmbh/SimpleRESTAdapterBundle",
+  "homepage": "https://github.com/CI-HUB-GmbH/SimpleRESTAdapterBundle",
   "authors": [
     {
       "name": "CI HUB GmbH",
       "email": "info@ci-hub.com",
       "homepage": "https://ci-hub.com"
+    },
+    {
+      "name": "Odyssey fork",
+      "homepage": "https://github.com/odyssey"
     }
   ],
   "require": {
-    "php": ">=8.0",
+    "php": ">=8.1",
     "ongr/elasticsearch-dsl": "^7.0",
     "pimcore/data-hub": "^1.0",
     "pimcore/pimcore": "^11.0",
-    "symfony/messenger": "^7.0",
+    "symfony/messenger": "^6.4",
     "zircote/swagger-php": "^3.0"
   },
   "require-dev": {
@@ -38,7 +44,7 @@
   },
   "extra": {
     "branch-alias": {
-      "dev-master": "2.0-dev"
+      "dev-master": "2.0.x-dev"
     },
     "pimcore": {
       "bundles": [
