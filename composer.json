@@ -23,7 +23,6 @@
   ],
   "require": {
     "php": ">=8.1",
-    "ongr/elasticsearch-dsl": "^7.0",
     "pimcore/data-hub": "^1.0",
     "pimcore/pimcore": "^11.0",
     "symfony/messenger": "^6.4",
