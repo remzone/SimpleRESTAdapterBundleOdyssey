@@ -1,31 +1,21 @@
 <?php
-/**
- * Simple REST Adapter.
- *
- * LICENSE
- *
- * This source file is subject to the GNU General Public License version 3 (GPLv3)
- * For the full copyright and license information, please view the LICENSE.md and gpl-3.0.txt
- * files that are distributed with this source code.
- *
- * @copyright  Copyright (c) 2021 CI HUB GmbH (https://ci-hub.com)
- * @license    https://github.com/ci-hub-gmbh/SimpleRESTAdapterBundle/blob/master/gpl-3.0.txt GNU General Public License version 3 (GPLv3)
- */
+
+declare(strict_types=1);
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle;
 
 use Pimcore\Extension\Bundle\AbstractPimcoreBundle;
+use Pimcore\Extension\Bundle\PimcoreBundleAdminClassicInterface;
+use Pimcore\Extension\Bundle\Traits\BundleAdminClassicSupportTrait;
 use Pimcore\Extension\Bundle\Traits\PackageVersionTrait;
 
-class SimpleRESTAdapterBundle extends AbstractPimcoreBundle
+class SimpleRESTAdapterBundle extends AbstractPimcoreBundle implements PimcoreBundleAdminClassicInterface
 {
     use PackageVersionTrait;
+    use BundleAdminClassicSupportTrait;
 
-    public const PACKAGE_NAME = 'ci-hub/simple-rest-adapter-bundle';
+    public const PACKAGE_NAME = 'odyssey/simple-rest-adapter-bundle';
 
-    /**
-     * {@inheritdoc}
-     */
     public function getCssPaths(): array
     {
         return [
@@ -33,9 +23,6 @@ class SimpleRESTAdapterBundle extends AbstractPimcoreBundle
         ];
     }
 
-    /**
-     * {@inheritdoc}
-     */
     public function getJsPaths(): array
     {
         return [
@@ -46,9 +33,6 @@ class SimpleRESTAdapterBundle extends AbstractPimcoreBundle
         ];
     }
 
-    /**
-     * {@inheritdoc}
-     */
     protected function getComposerPackageName(): string
     {
         return self::PACKAGE_NAME;
