@@ -7,3 +7,10 @@ simple_rest_adapter_endpoints:
 simple_rest_adapter_swagger:
     resource: 'routing/swagger.yml'
     prefix: /pimcore-datahub-webservices/simplerest
+    
+# Configuration
+simple_rest_adapter_config:
+    resource: 'routing/configuration.yml'
+    prefix: /admin/simple-rest-adapter/config
+    options:
+        expose: true
