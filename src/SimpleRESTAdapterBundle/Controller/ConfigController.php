@@ -2,185 +2,48 @@
 
 declare(strict_types=1);
 
-/**
- *  Copyright 2021 CI Hub GmbH. All rights reserved.
- */
+namespace SimpleRESTAdapterBundle\Controller;
 
-namespace CIHub\Bundle\SimpleRESTAdapterBundle\Controller;
-
-use CIHub\Bundle\SimpleRESTAdapterBundle\Configuration\DataHubConfigGeneratorInterface;
-use CIHub\Bundle\SimpleRESTAdapterBundle\Extractor\LabelExtractorInterface;
-use CIHub\Bundle\SimpleRESTAdapterBundle\Repository\DataHubConfigurationRepository;
 use Pimcore\Bundle\DataHubBundle\Controller\ConfigController as BaseConfigController;
-use Pimcore\Bundle\DataHubBundle\Event\DataHubConfigEvent;
-use Pimcore\Bundle\DataHubBundle\Event\DataHubEvents;
-use Pimcore\Bundle\DataHubBundle\GraphQL\DataHub\GraphQLDataHubProcessor\Config;
-use Pimcore\Bundle\DataHubBundle\GraphQL\Service\IndexManager;
-use Pimcore\Bundle\DataHubBundle\GraphQL\Service\IndexNameGeneratorInterface;
-use Pimcore\Bundle\DataHubBundle\GraphQL\Service\QueryColumnConfig\Helper\QueryConfig;
-use Pimcore\Controller\UserAwareController;
-use Pimcore\Model\DataObject\ClassDefinition;
-use Pimcore\Model\User;
+use Pimcore\Bundle\DataHubBundle\Configuration;
+use Pimcore\Bundle\DataHubBundle\GraphQL\Service;
+use Pimcore\Controller\Traits\JsonHelperTrait;
+use SimpleRESTAdapterBundle\Config\Config;
+use SimpleRESTAdapterBundle\Event\DataHubConfigEvent;
+use SimpleRESTAdapterBundle\Event\DataHubEvents;
+use SimpleRESTAdapterBundle\Repository\ConfigRepository;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
+use Pimcore\Model\User;
 
-/**
- * Pimcore 11 / DataHub controller adapter.
- *
- * В Pimcore 11 методы контроллеров DataHub имеют строгие сигнатуры.
- * Если вы переопределяете listAction/saveAction/getAction/deleteAction,
- * сигнатуры должны совпадать с базовым контроллером DataHub.
- */
-class ConfigController extends BaseConfigController implements UserAwareController
+class ConfigController extends BaseConfigController
 {
+    use JsonHelperTrait;
+
     public function __construct(
-        private readonly DataHubConfigurationRepository $configRepository,
-        private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly ConfigRepository $configRepository,
+        private readonly EventDispatcherInterface $eventDispatcher
     ) {
+        // parent::__construct() обычно не нужен
     }
 
-    public function initAction(): void
-    {
-        $this->checkPermission('config');
-    }
-
-    public function labelListAction(
-        IndexManager $indexManager,
-        LabelExtractorInterface $labelExtractor,
-        Request $request
-    ): JsonResponse {
-        $this->checkPermission('config');
-
-        $configName = (string) $request->get('name');
-        $configuration = $this->configRepository->findOneByName($configName);
-
-        if (!$configuration) {
-            return new JsonResponse(['success' => false, 'message' => 'Config not found'], 404);
-        }
-
-        $index = $indexManager->getIndex($configuration->getName());
-        $objectClass = ClassDefinition::getById($configuration->getClassId());
-
-        if (null === $objectClass) {
-            return new JsonResponse(['success' => false, 'message' => 'No class found'], 404);
-        }
-
-        $columns = QueryConfig::fromArray($configuration->getColumnConfig());
-        $labelList = $labelExtractor->getLabelList($columns, $objectClass, $index->getClient());
-
-        return new JsonResponse(['success' => true, 'data' => $labelList]);
-    }
-
-    public function columnsConfigAction(
-        DataHubConfigGeneratorInterface $configGenerator,
-        Request $request
-    ): JsonResponse {
-        $this->checkPermission('config');
-
-        $data = $request->get('data');
-        $config = Config::getConfig($data);
-        $config = $configGenerator->generateConfig($config);
-
-        return new JsonResponse([
-            'success' => true,
-            'data' => $config->getColumnConfig(),
-        ]);
-    }
-
-    public function thumbnailsAction(
-        IndexNameGeneratorInterface $indexNameGenerator,
-        IndexManager $indexManager,
-        Request $request
-    ): JsonResponse {
-        $this->checkPermission('config');
-
-        $name = (string) $request->get('name');
-
-        $client = $indexManager->getIndex($indexNameGenerator->generateName($name))->getClient();
-        $response = $client->indices()->getMapping();
-        $fields = current($response)['mappings']['properties'] ?? [];
-
-        $thumbnails = [];
-        $images = $fields['images']['properties'] ?? null;
-
-        if ($images !== null) {
-            foreach ($images as $key => $value) {
-                if (str_starts_with((string) $key, 'thumbnail')) {
-                    $short = substr((string) $key, 9);
-                    if (!empty($short)) {
-                        $thumbnails[$short] = $short;
-                    }
-                }
-            }
-        }
-
-        return new JsonResponse([
-            'success' => true,
-            'data' => $thumbnails,
-        ]);
-    }
-
-    /**
-     * IMPORTANT (Pimcore 11): signature must match base DataHub controller.
-     */
-    public function deleteAction(Request $request): JsonResponse
-    {
-        $this->checkPermission('config');
-
-        $name = (string) $request->get('name');
-
-        $config = $this->configRepository->findOneByName($name);
-        if (!$config) {
-            return new JsonResponse(['success' => false, 'message' => 'Config not found'], 404);
-        }
-
-        $event = new DataHubConfigEvent($name, $config->getConfiguration());
-        $this->eventDispatcher->dispatch($event, DataHubEvents::CONFIG_DELETE);
-
-        $this->configRepository->delete($name);
-
-        return new JsonResponse(['success' => true]);
-    }
-
-    /**
-     * IMPORTANT (Pimcore 11): signature must match base DataHub controller.
-     */
-    public function getAction(Request $request): JsonResponse
-    {
-        $this->checkPermission('config');
-
-        $name = (string) $request->get('name');
-        $config = $this->configRepository->findOneByName($name);
-
-        if (!$config) {
-            return new JsonResponse(['success' => false, 'message' => 'Config not found'], 404);
-        }
-
-        return new JsonResponse([
-            'success' => true,
-            'data' => $config->getConfiguration(),
-        ]);
-    }
-
-    /**
-     * IMPORTANT (Pimcore 11): signature must match base DataHub controller.
-     */
     public function listAction(Request $request): JsonResponse
     {
-        $this->checkPermission('config');
+        $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        $list = $this->getConfigurationList($this->configRepository);
+        $list = $this->configRepository->getList();
 
+        // Поддержка modificationDate как у тебя в старой логике
         foreach ($list as $key => $configuration) {
-            $cfg = $this->configRepository->findOneByName($configuration['name']);
-            if ($cfg) {
-                $list[$key]['modificationDate'] = $cfg->getModificationDate();
+            $config = $this->configRepository->findOneByName($configuration['name']);
+            if ($config) {
+                $list[$key]['modificationDate'] = $config->getModificationDate();
             }
         }
 
@@ -188,13 +51,71 @@ class ConfigController extends BaseConfigController implements UserAwareControll
     }
 
     /**
-     * IMPORTANT (Pimcore 11): signature must match base DataHub controller.
+     * Pimcore DataHub signature:
+     * public function getAction(Request $request, Service $graphQlService, EventDispatcherInterface $eventDispatcher): JsonResponse
      */
+    public function getAction(
+        Request $request,
+        Service $graphQlService,
+        EventDispatcherInterface $eventDispatcher
+    ): JsonResponse {
+        $this->checkPermission(BaseConfigController::CONFIG_NAME);
+
+        // как в DataHub
+        $name = $request->query->getString('name');
+
+        // твоя репозитория вместо Configuration::getByName()
+        $configuration = $this->configRepository->findOneByName($name);
+
+        if (!$configuration instanceof Configuration) {
+            throw new \InvalidArgumentException(sprintf('No DataHub configuration found for name "%s".', $name));
+        }
+
+        // permissions как у DataHub
+        if (method_exists($configuration, 'isAllowed') && !$configuration->isAllowed('read')) {
+            throw $this->createAccessDeniedHttpException();
+        }
+
+        // базовый конфиг
+        $config = $configuration->getConfiguration();
+
+        // ---- твоя часть: добавляем ссылки на endpoints в конфиг ----
+        // делаем абсолютные URL, как DataHub генерит webservice url
+        $config['simpleRestAdapter'] = array_merge($config['simpleRestAdapter'] ?? [], [
+            'swaggerUrl' => $this->absoluteRoute('simple_rest_adapter_swagger_ui'),
+            'treeItemsUrl' => $this->absoluteRoute('simple_rest_adapter_endpoints_tree_items', ['config' => $name]),
+            'searchUrl' => $this->absoluteRoute('simple_rest_adapter_endpoints_get_element', ['config' => $name]),
+            'getElementByIdUrl' => $this->absoluteRoute('simple_rest_adapter_endpoints_get_element', ['config' => $name]),
+        ]);
+        // -----------------------------------------------------------
+
+        // Чтобы UI DataHub не ломался, можно оставить совместимую структуру ответа:
+        // (даже если ты это не используешь сейчас — это безопаснее)
+        $supportedQueryDataTypes = $graphQlService->getSupportedDataObjectQueryDataTypes();
+        $supportedMutationDataTypes = $graphQlService->getSupportedDataObjectMutationDataTypes();
+
+        return new JsonResponse([
+            'name' => method_exists($configuration, 'getName') ? $configuration->getName() : $name,
+            'configuration' => $config,
+
+            'userPermissions' => [
+                'update' => method_exists($configuration, 'isAllowed') ? $configuration->isAllowed('update') : true,
+                'delete' => method_exists($configuration, 'isAllowed') ? $configuration->isAllowed('delete') : true,
+            ],
+
+            'supportedGraphQLQueryDataTypes' => $supportedQueryDataTypes,
+            'supportedGraphQLMutationDataTypes' => $supportedMutationDataTypes,
+
+            // у тебя modificationDate лежит в репозитории/конфиге — оставляем оба варианта
+            'modificationDate' => $config['general']['modificationDate'] ?? $this->configRepository->getModificationDate(),
+        ]);
+    }
+
     public function saveAction(Request $request): JsonResponse
     {
-        $this->checkPermission('config');
+        $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        $data = $request->get('data');
+        $data = (string) $request->get('data');
         $config = Config::getConfig($data);
 
         $config = $this->configRepository->save($config);
@@ -207,18 +128,7 @@ class ConfigController extends BaseConfigController implements UserAwareControll
 
     public function getEndpointAction(Request $request): JsonResponse
     {
-        $this->checkPermission('config');
-
-        /** @var RequestStack $requestStack */
-        $requestStack = $this->container->get(RequestStack::class);
-
-        /** @var RouterInterface $router */
-        $router = $this->container->get(RouterInterface::class);
-
-        /** @var UrlGeneratorInterface $urlGenerator */
-        $urlGenerator = $this->container->get(UrlGeneratorInterface::class);
-
-        $baseUrl = $router->getContext()->getScheme() . '://' . $router->getContext()->getHost();
+        $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
         return new JsonResponse([
             'success' => true,
@@ -226,13 +136,18 @@ class ConfigController extends BaseConfigController implements UserAwareControll
                 (string) $request->get('name'),
                 (string) $request->get('endpoint'),
                 (string) $request->get('type'),
-                $requestStack,
-                $baseUrl,
-                $urlGenerator
+                $this->container->get(RequestStack::class),
+                $this->container->get(RouterInterface::class)->getContext()->getScheme()
+                    . '://'
+                    . $this->container->get(RouterInterface::class)->getContext()->getHost(),
+                $this->container->get(UrlGeneratorInterface::class),
             ),
         ]);
     }
 
+    /**
+     * Оставляю твою реализацию (для pimcore_datahub_webservice).
+     */
     private function getEndpoint(
         string $name,
         string $endpoint,
@@ -249,15 +164,37 @@ class ConfigController extends BaseConfigController implements UserAwareControll
         return $url . $path;
     }
 
+    /**
+     * Абсолютная ссылка на роут (нужно для UI).
+     */
+    private function absoluteRoute(string $routeName, array $params = []): string
+    {
+        /** @var RouterInterface $router */
+        $router = $this->container->get(RouterInterface::class);
+
+        $scheme = $router->getContext()->getScheme();
+        $host = $router->getContext()->getHost();
+
+        /** @var UrlGeneratorInterface $urlGenerator */
+        $urlGenerator = $this->container->get(UrlGeneratorInterface::class);
+
+        $path = $urlGenerator->generate($routeName, $params);
+
+        return $scheme . '://' . $host . $path;
+    }
+
+    /**
+     * Pimcore permission guard (твоя логика).
+     */
     private function checkPermission(string $permission): void
     {
+        /** @var User|null $user */
         $user = $this->getUser();
 
         if (!$user instanceof User) {
             throw new AccessDeniedHttpException();
         }
 
-        // admin => allow all
         if (method_exists($user, 'isAdmin') && $user->isAdmin()) {
             return;
         }
