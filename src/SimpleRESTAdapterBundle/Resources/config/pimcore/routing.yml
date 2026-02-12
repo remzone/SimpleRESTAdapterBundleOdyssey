@@ -1,10 +1,3 @@
-# Configuration
-simple_rest_adapter_config:
-    resource: 'routing/configuration.yml'
-    prefix: /admin/simple-rest-adapter/config
-    options:
-        expose: true
-
 # Endpoints
 simple_rest_adapter_endpoints:
     resource: 'routing/endpoints.yml'
