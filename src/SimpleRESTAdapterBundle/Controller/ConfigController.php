@@ -1,4 +1,3 @@
-// src/SimpleRESTAdapterBundle/Controller/ConfigController.php
 <?php
 /**
  * Simple REST Adapter.
