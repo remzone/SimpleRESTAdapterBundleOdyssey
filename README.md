@@ -75,6 +75,8 @@ The bundle exposes a configurable REST layer with the following typical capabili
 - Package name: `odyssey/simple-rest-adapter-bundle`
 - Namespace: `CIHub\Bundle\SimpleRESTAdapterBundle`
 - This repository contains the public Odyssey-maintained fork adapted for modern Pimcore usage
+- The original bundle codebase was created by CI HUB
+- Ongoing compatibility updates and fork maintenance are provided by Odyssey
 
 ### License
 
@@ -153,6 +155,8 @@ Bundle предоставляет настраиваемый REST-слой со 
 - Имя пакета: `odyssey/simple-rest-adapter-bundle`
 - Namespace: `CIHub\Bundle\SimpleRESTAdapterBundle`
 - Этот репозиторий содержит публичный fork Odyssey, адаптированный для современного Pimcore
+- Исходная кодовая база bundle изначально создана CI HUB
+- Дальнейшие обновления, адаптация и сопровождение форка выполняются Odyssey
 
 ### Лицензия
 
