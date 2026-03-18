@@ -14,13 +14,10 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Exception;
 
-final class ESClientException extends \RuntimeException
+final class MissingDocumentException extends \RuntimeException
 {
-    /**
-     * @param string $message
-     */
-    public function __construct(string $message)
+    public function __construct(int $id, string $index, \Throwable $previous = null)
     {
-        parent::__construct(sprintf('Search Engine Client Exception: %s', $message));
+        parent::__construct(sprintf('Document with ID %d was not found in index "%s".', $id, $index), 404, $previous);
     }
 }

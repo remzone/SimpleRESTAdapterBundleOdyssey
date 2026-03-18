@@ -14,14 +14,12 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Builder;
 
-use OpenSearch\Client;
-
 interface ClientBuilderInterface
 {
     /**
-     * Builds and returns an Elasticsearch client.
+     * Builds and returns a search engine client.
      *
-     * @return Client
+     * @return object
      */
-    public function build(): Client;
+    public function build(): object;
 }

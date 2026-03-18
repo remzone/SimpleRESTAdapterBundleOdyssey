@@ -22,11 +22,11 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Index\IndexQueryService;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Exception\MissingDocumentException;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Manager\IndexManager;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Provider\AssetProvider;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Reader\ConfigReader;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Query\MatchQuery;
-use OpenSearch\Common\Exceptions\Missing404Exception;
 
 class EndpointController extends BaseEndpointController
 {
@@ -143,7 +143,7 @@ class EndpointController extends BaseEndpointController
         foreach ($indices as $index) {
             try {
                 $result = $indexService->get($id, $index);
-            } catch (Missing404Exception $exception) {
+            } catch (MissingDocumentException $exception) {
                 $result = [];
             }
 

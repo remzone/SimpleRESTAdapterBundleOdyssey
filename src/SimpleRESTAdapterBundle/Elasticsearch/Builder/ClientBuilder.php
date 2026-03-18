@@ -14,31 +14,61 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Builder;
 
-use OpenSearch\Client;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Exception\ESClientException;
 
 final class ClientBuilder implements ClientBuilderInterface
 {
+    /**
+     * @var string
+     */
+    private $engine;
+
     /**
      * @var array<int, string>
      */
     private $hosts;
 
     /**
+     * @param string             $engine
      * @param array<int, string> $hosts
      */
-    public function __construct(array $hosts)
+    public function __construct(string $engine, array $hosts)
     {
+        $this->engine = $engine;
         $this->hosts = $hosts;
     }
 
     /**
      * {@inheritdoc}
      */
-    public function build(): Client
+    public function build(): object
     {
-        $client = \OpenSearch\ClientBuilder::create();
-        $client->setHosts($this->hosts);
+        if ('opensearch' === $this->engine) {
+            if (!class_exists(\OpenSearch\ClientBuilder::class)) {
+                throw new ESClientException(
+                    'Search engine "opensearch" selected, but package "opensearch-project/opensearch-php" is not installed.'
+                );
+            }
 
-        return $client->build();
+            $client = \OpenSearch\ClientBuilder::create();
+            $client->setHosts($this->hosts);
+
+            return $client->build();
+        }
+
+        if ('elasticsearch' === $this->engine) {
+            if (!class_exists(\Elastic\Elasticsearch\ClientBuilder::class)) {
+                throw new ESClientException(
+                    'Search engine "elasticsearch" selected, but package "elastic/elasticsearch" is not installed.'
+                );
+            }
+
+            $client = \Elastic\Elasticsearch\ClientBuilder::create();
+            $client->setHosts($this->hosts);
+
+            return $client->build();
+        }
+
+        throw new ESClientException(sprintf('Unsupported search engine "%s".', $this->engine));
     }
 }

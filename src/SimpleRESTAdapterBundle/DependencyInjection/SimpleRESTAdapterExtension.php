@@ -68,8 +68,15 @@ class SimpleRESTAdapterExtension extends Extension implements PrependExtensionIn
             $config = array_merge($config, ...$this->ciHubConfig);
         }
 
+        $hosts = $config['hosts'];
+        if (empty($hosts)) {
+            $hosts = $config['es_hosts'];
+        }
+
+        $container->setParameter('simple_rest_adapter.engine', $config['engine']);
+        $container->setParameter('simple_rest_adapter.hosts', $hosts);
         $container->setParameter('simple_rest_adapter.index_name_prefix', $config['index_name_prefix']);
-        $container->setParameter('simple_rest_adapter.es_hosts', $config['es_hosts']);
+        $container->setParameter('simple_rest_adapter.es_hosts', $hosts);
         $container->setParameter('simple_rest_adapter.index_settings', $config['index_settings']);
         $container->setParameter('simple_rest_adapter.default_preview_thumbnail', $config['default_preview_thumbnail'] ?? []);
     }

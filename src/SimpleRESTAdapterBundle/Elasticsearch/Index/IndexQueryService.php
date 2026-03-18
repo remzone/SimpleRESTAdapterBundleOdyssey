@@ -14,14 +14,13 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Index;
 
+use CIHub\Bundle\SimpleRESTAdapterBundle\Exception\MissingDocumentException;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Search;
-use OpenSearch\Client;
-use OpenSearch\Common\Exceptions\Missing404Exception;
 
 final class IndexQueryService
 {
     /**
-     * @var Client
+     * @var object
      */
     private $client;
 
@@ -31,10 +30,10 @@ final class IndexQueryService
     private $indexNamePrefix;
 
     /**
-     * @param Client $client
+     * @param object $client
      * @param string $indexNamePrefix
      */
-    public function __construct(Client $client, string $indexNamePrefix)
+    public function __construct(object $client, string $indexNamePrefix)
     {
         $this->client = $client;
         $this->indexNamePrefix = $indexNamePrefix;
@@ -54,7 +53,7 @@ final class IndexQueryService
      *
      * @return array<string, mixed>
      *
-     * @throws Missing404Exception
+     * @throws MissingDocumentException
      */
     public function get(int $id, string $index): array
     {
@@ -63,7 +62,15 @@ final class IndexQueryService
             'index' => $index,
         ];
 
-        return $this->client->get($params);
+        try {
+            return $this->client->get($params);
+        } catch (\Throwable $exception) {
+            if ($this->isDocumentMissingException($exception)) {
+                throw new MissingDocumentException($id, $index, $exception);
+            }
+
+            throw $exception;
+        }
     }
 
     /**
@@ -89,5 +96,24 @@ final class IndexQueryService
         }
 
         return $this->client->search($requestParams);
+    }
+
+    private function isDocumentMissingException(\Throwable $exception): bool
+    {
+        if ($exception->getCode() === 404) {
+            return true;
+        }
+
+        if (class_exists(\OpenSearch\Common\Exceptions\Missing404Exception::class)
+            && $exception instanceof \OpenSearch\Common\Exceptions\Missing404Exception) {
+            return true;
+        }
+
+        if (class_exists(\Elastic\Elasticsearch\Exception\ClientResponseException::class)
+            && $exception instanceof \Elastic\Elasticsearch\Exception\ClientResponseException) {
+            return $exception->getCode() === 404;
+        }
+
+        return false;
     }
 }

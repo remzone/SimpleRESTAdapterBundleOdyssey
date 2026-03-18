@@ -16,7 +16,6 @@ namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Index;
 
 use Exception;
 use InvalidArgumentException;
-use OpenSearch\Client;
 use Pimcore\Bundle\DataHubBundle\Configuration;
 use Pimcore\Model\Asset;
 use Pimcore\Model\DataObject;
@@ -29,7 +28,7 @@ use CIHub\Bundle\SimpleRESTAdapterBundle\Repository\DataHubConfigurationReposito
 final class IndexPersistenceService
 {
     /**
-     * @var Client
+     * @var object
      */
     private $client;
 
@@ -54,14 +53,14 @@ final class IndexPersistenceService
     private $indexSettings;
 
     /**
-     * @param Client                         $client
+     * @param object                         $client
      * @param DataHubConfigurationRepository $configRepository
      * @param AssetProvider                  $assetProvider
      * @param DataObjectProvider             $objectProvider
      * @param array<string, string|array>    $indexSettings
      */
     public function __construct(
-        Client $client,
+        object $client,
         DataHubConfigurationRepository $configRepository,
         AssetProvider $assetProvider,
         DataObjectProvider $objectProvider,
