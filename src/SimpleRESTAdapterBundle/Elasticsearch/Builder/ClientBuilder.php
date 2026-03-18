@@ -14,7 +14,7 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Builder;
 
-use Elasticsearch\Client;
+use OpenSearch\Client;
 
 final class ClientBuilder implements ClientBuilderInterface
 {
@@ -36,7 +36,7 @@ final class ClientBuilder implements ClientBuilderInterface
      */
     public function build(): Client
     {
-        $client = \Elasticsearch\ClientBuilder::create();
+        $client = \OpenSearch\ClientBuilder::create();
         $client->setHosts($this->hosts);
 
         return $client->build();

@@ -14,9 +14,9 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Index;
 
-use Elasticsearch\Client;
-use Elasticsearch\Common\Exceptions\Missing404Exception;
-use ONGR\ElasticsearchDSL\Search;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Search;
+use OpenSearch\Client;
+use OpenSearch\Common\Exceptions\Missing404Exception;
 
 final class IndexQueryService
 {

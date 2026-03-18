@@ -14,9 +14,9 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Index;
 
-use Elasticsearch\Client;
 use Exception;
 use InvalidArgumentException;
+use OpenSearch\Client;
 use Pimcore\Bundle\DataHubBundle\Configuration;
 use Pimcore\Model\Asset;
 use Pimcore\Model\DataObject;

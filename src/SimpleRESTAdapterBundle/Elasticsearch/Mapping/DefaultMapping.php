@@ -81,7 +81,7 @@ abstract class DefaultMapping implements MappingInterface
                     'type' => 'long',
                 ],
                 'type' => [
-                    'type' => 'constant_keyword',
+                    'type' => 'keyword',
                 ],
                 'binaryData' => [
                     'dynamic' => 'false',

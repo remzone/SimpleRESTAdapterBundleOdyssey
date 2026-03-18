@@ -62,7 +62,7 @@ final class DataObjectMapping extends DefaultMapping
                             ],
                         ],
                         'type' => [
-                            'type' => 'constant_keyword',
+                            'type' => 'keyword',
                         ],
                         'parentId' => [
                             'type' => 'keyword',

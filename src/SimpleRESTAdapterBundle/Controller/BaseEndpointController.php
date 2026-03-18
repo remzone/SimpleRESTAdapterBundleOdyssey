@@ -14,12 +14,6 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Controller;
 
-use ONGR\ElasticsearchDSL\Aggregation\Bucketing\TermsAggregation;
-use ONGR\ElasticsearchDSL\Query\Compound\BoolQuery;
-use ONGR\ElasticsearchDSL\Query\FullText\SimpleQueryStringQuery;
-use ONGR\ElasticsearchDSL\Query\TermLevel\TermQuery;
-use ONGR\ElasticsearchDSL\Search;
-use ONGR\ElasticsearchDSL\Sort\FieldSort;
 use Pimcore\Bundle\DataHubBundle\Configuration;
 use Pimcore\Controller\FrontendController;
 use Symfony\Component\HttpFoundation\Request;
@@ -31,6 +25,12 @@ use CIHub\Bundle\SimpleRESTAdapterBundle\Exception\InvalidParameterException;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Extractor\LabelExtractorInterface;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Reader\ConfigReader;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Repository\DataHubConfigurationRepository;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Aggregation\TermsAggregation;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\BoolQuery;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Query\SimpleQueryStringQuery;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Query\TermQuery;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Search;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Sort\FieldSort;
 
 abstract class BaseEndpointController extends FrontendController
 {

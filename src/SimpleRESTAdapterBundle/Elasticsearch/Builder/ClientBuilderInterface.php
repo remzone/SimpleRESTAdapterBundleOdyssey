@@ -14,7 +14,7 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Builder;
 
-use Elasticsearch\Client;
+use OpenSearch\Client;
 
 interface ClientBuilderInterface
 {

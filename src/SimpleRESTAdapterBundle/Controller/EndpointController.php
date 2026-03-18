@@ -14,8 +14,6 @@
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Controller;
 
-use Elasticsearch\Common\Exceptions\Missing404Exception;
-use ONGR\ElasticsearchDSL\Query\FullText\MatchQuery;
 use Pimcore\File;
 use Pimcore\Model\Asset;
 use Pimcore\Model\Asset\Image\Thumbnail;
@@ -27,6 +25,8 @@ use CIHub\Bundle\SimpleRESTAdapterBundle\Elasticsearch\Index\IndexQueryService;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Manager\IndexManager;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Provider\AssetProvider;
 use CIHub\Bundle\SimpleRESTAdapterBundle\Reader\ConfigReader;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Search\Query\MatchQuery;
+use OpenSearch\Common\Exceptions\Missing404Exception;
 
 class EndpointController extends BaseEndpointController
 {

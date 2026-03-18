@@ -86,7 +86,7 @@ final class AssetMapping extends DefaultMapping
                             ],
                         ],
                         'type' => [
-                            'type' => 'constant_keyword',
+                            'type' => 'keyword',
                         ],
                         'parentId' => [
                             'type' => 'keyword',
@@ -150,4 +150,3 @@ final class AssetMapping extends DefaultMapping
         return $properties;
     }
 }
-

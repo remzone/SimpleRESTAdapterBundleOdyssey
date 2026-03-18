@@ -4,14 +4,16 @@ declare(strict_types=1);
 
 namespace CIHub\Bundle\SimpleRESTAdapterBundle\Controller;
 
-use CIHub\Bundle\SimpleRESTAdapterBundle\Config\Config;
-use CIHub\Bundle\SimpleRESTAdapterBundle\Event\DataHubConfigEvent;
-use CIHub\Bundle\SimpleRESTAdapterBundle\Event\DataHubEvents;
-use CIHub\Bundle\SimpleRESTAdapterBundle\Repository\ConfigRepository;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Model\Event\ConfigurationEvent as SimpleRestConfigurationEvent;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Model\Event\GetModifiedConfigurationEvent;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Reader\ConfigReader;
+use CIHub\Bundle\SimpleRESTAdapterBundle\Repository\DataHubConfigurationRepository;
+use CIHub\Bundle\SimpleRESTAdapterBundle\SimpleRESTAdapterEvents;
 use Pimcore\Bundle\DataHubBundle\Controller\ConfigController as BaseConfigController;
 use Pimcore\Bundle\DataHubBundle\Configuration;
 use Pimcore\Bundle\DataHubBundle\GraphQL\Service as GraphQlService;
 use Pimcore\Controller\Traits\JsonHelperTrait;
+use Pimcore\Model\Exception\ConfigWriteException;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -24,7 +26,7 @@ class ConfigController extends BaseConfigController
     use JsonHelperTrait;
 
     public function __construct(
-        private readonly ConfigRepository $configRepository,
+        private readonly DataHubConfigurationRepository $configRepository,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly RouterInterface $router,
         private readonly UrlGeneratorInterface $urlGenerator,
@@ -36,21 +38,33 @@ class ConfigController extends BaseConfigController
     {
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        $list = $this->configRepository->getList();
+        $list = $this->configRepository->getList(['simpleRest']);
+        $tree = [];
 
-        foreach ($list as $key => $item) {
-            if (!isset($item['name'])) {
+        foreach ($list as $item) {
+            if (!$item instanceof Configuration || !$item->isAllowed('read')) {
                 continue;
             }
 
-            $cfg = $this->configRepository->findOneByName((string) $item['name']);
-            if ($cfg instanceof Configuration) {
-                $list[$key]['modificationDate'] = $cfg->getConfiguration()['general']['modificationDate']
-                    ?? $this->configRepository->getModificationDate();
-            }
+            $tree[] = [
+                'id' => $item->getName(),
+                'text' => htmlspecialchars((string) $item->getName()),
+                'type' => 'config',
+                'iconCls' => 'plugin_pimcore_datahub_icon_' . ($item->getType() ?: 'simpleRest'),
+                'expandable' => false,
+                'leaf' => true,
+                'adapter' => $item->getType() ?: 'simpleRest',
+                'writeable' => $item->isWriteable(),
+                'permissions' => [
+                    'delete' => $item->isAllowed('delete'),
+                    'update' => $item->isAllowed('update'),
+                ],
+                'modificationDate' => $item->getConfiguration()['general']['modificationDate']
+                    ?? $this->configRepository->getModificationDate(),
+            ];
         }
 
-        return new JsonResponse(['success' => true, 'data' => $list]);
+        return new JsonResponse(['success' => true, 'data' => $tree]);
     }
 
     public function getAction(
@@ -103,15 +117,56 @@ class ConfigController extends BaseConfigController
     {
         $this->checkPermission(BaseConfigController::CONFIG_NAME);
 
-        $data = (string) $request->get('data');
-        $config = Config::getConfig($data);
+        if ((new Configuration(null, null))->isWriteable() === false) {
+            throw new ConfigWriteException();
+        }
 
-        $config = $this->configRepository->save($config);
+        $data = $request->request->getString('data');
+        $modificationDate = $request->request->getInt('modificationDate', 0);
+        $dataDecoded = json_decode($data, true);
+        if (!is_array($dataDecoded)) {
+            throw new \InvalidArgumentException('Invalid configuration payload.');
+        }
 
-        $event = new DataHubConfigEvent($config->getName(), $config->getConfiguration());
-        $this->eventDispatcher->dispatch($event, DataHubEvents::CONFIG_SAVE);
+        $name = (string) ($dataDecoded['general']['name'] ?? '');
+        $config = $this->configRepository->findOneByName($name);
+        if (!$config instanceof Configuration) {
+            throw new \InvalidArgumentException(sprintf('No DataHub configuration found for name "%s".', $name));
+        }
 
-        return new JsonResponse(['success' => true]);
+        if (!$config->isAllowed('read') || !$config->isAllowed('update')) {
+            return new JsonResponse(['success' => false, 'permissionError' => true]);
+        }
+
+        $priorConfiguration = $config->getConfiguration();
+        $savedModificationDate = 0;
+        if ($priorConfiguration && isset($priorConfiguration['general']['modificationDate'])) {
+            $savedModificationDate = (int) $priorConfiguration['general']['modificationDate'];
+        }
+
+        if ($modificationDate > 0 && $modificationDate < $savedModificationDate) {
+            return new JsonResponse([
+                'success' => false,
+                'message' => 'The configuration was modified during editing, please reload the configuration and make your changes again',
+            ]);
+        }
+
+        $dataDecoded['general']['modificationDate'] = time();
+
+        $preSaveEvent = new GetModifiedConfigurationEvent($dataDecoded, $priorConfiguration);
+        $this->eventDispatcher->dispatch($preSaveEvent, SimpleRESTAdapterEvents::CONFIGURATION_PRE_SAVE);
+
+        $modifiedConfiguration = $preSaveEvent->getModifiedConfiguration() ?? $dataDecoded;
+        $config->setConfiguration($modifiedConfiguration);
+        $config->save();
+
+        $postSaveEvent = new SimpleRestConfigurationEvent($config->getConfiguration(), $priorConfiguration);
+        $this->eventDispatcher->dispatch($postSaveEvent, SimpleRESTAdapterEvents::CONFIGURATION_POST_SAVE);
+
+        return new JsonResponse([
+            'success' => true,
+            'modificationDate' => $config->getConfiguration()['general']['modificationDate'] ?? null,
+        ]);
     }
 
     public function getEndpointAction(Request $request): JsonResponse
@@ -133,6 +188,35 @@ class ConfigController extends BaseConfigController
             'success' => true,
             'url' => $url,
         ]);
+    }
+
+    public function labelListAction(Request $request): JsonResponse
+    {
+        $this->checkPermission(BaseConfigController::CONFIG_NAME);
+
+        $name = $request->query->getString('name');
+        $configuration = $this->configRepository->findOneByName($name);
+
+        if (!$configuration instanceof Configuration) {
+            return new JsonResponse(['success' => false, 'message' => sprintf('No DataHub configuration found for name "%s".', $name)]);
+        }
+
+        $labelSettings = (new ConfigReader($configuration->getConfiguration()))->getLabelSettings();
+        $labelList = [];
+
+        foreach ($labelSettings as $setting) {
+            $labelId = $setting['id'] ?? null;
+            if (is_string($labelId) && $labelId !== '') {
+                $labelList[] = $labelId;
+            }
+        }
+
+        return new JsonResponse(['success' => true, 'labelList' => array_values(array_unique($labelList))]);
+    }
+
+    public function thumbnailsAction(Request $request): JsonResponse
+    {
+        return $this->thumbnailTreeAction($request);
     }
 
     private function absoluteRoute(string $routeName, array $params = []): string
